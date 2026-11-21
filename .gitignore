@@ -1,0 +1,21 @@
+# Compiled output
+out/
+*.class
+
+# JAR (only the final runnable JAR is kept, intermediate are excluded)
+*.jar
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.project
+*.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp
+sources.txt
+manifest.txt
