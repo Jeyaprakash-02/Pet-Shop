@@ -2,6 +2,7 @@
 generate_report.py  —  Pet Shop Management System
 Fills content into OOP_MiniProject_Report_Template.docx paragraph by paragraph,
 preserving all headings, styles, cover page, and bonafide certificate.
+Embeds real screenshots directly into the document package.
 Saves to report/PetShop_Report.docx.
 
 Usage:
@@ -17,7 +18,7 @@ from docx.oxml import OxmlElement
 
 TEMPLATE = r"f:\petshop\report\OOP_MiniProject_Report_Template.docx"
 OUTPUT   = r"f:\petshop\report\PetShop_Report.docx"
-PYTHON   = r"C:\Users\jeyap\AppData\Local\Programs\Python\Python312\python.exe"
+OUTPUT_FALLBACK = r"f:\petshop\report\PetShop_Report_Updated.docx"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -61,23 +62,6 @@ def add_code_block(doc, code):
     run.font.size = Pt(9)
     return p
 
-def add_table(doc, headers, rows, col_widths=None):
-    table = doc.add_table(rows=1, cols=len(headers))
-    table.style = "Table Grid"
-    hdr = table.rows[0].cells
-    for i, h in enumerate(headers):
-        hdr[i].text = h
-        for run in hdr[i].paragraphs[0].runs:
-            run.bold = True
-            run.font.size = Pt(10)
-    for row_data in rows:
-        cells = table.add_row().cells
-        for i, val in enumerate(row_data):
-            cells[i].text = str(val)
-            for run in cells[i].paragraphs[0].runs:
-                run.font.size = Pt(10)
-    return table
-
 def find_para_index(doc, text_contains):
     """Return index of first paragraph whose text contains the given string."""
     for i, p in enumerate(doc.paragraphs):
@@ -85,27 +69,14 @@ def find_para_index(doc, text_contains):
             return i
     return None
 
-def insert_after(doc, ref_para, new_para_xml):
-    """Insert new_para_xml element after ref_para in the document body."""
-    ref_para._p.addnext(new_para_xml)
-
-def paragraphs_after(doc, start_idx):
-    """Generator of paragraphs from start_idx onwards."""
-    return doc.paragraphs[start_idx:]
-
-# ── Content inserter — appends after a heading paragraph ───────────────────────
-
 def insert_content_after_heading(doc, heading_text, content_fn):
-    """Find the heading paragraph by text, then insert content right after it."""
+    """Find the heading paragraph by text, then insert text/code content right after it."""
     idx = find_para_index(doc, heading_text)
     if idx is None:
         print(f"  WARNING: heading '{heading_text}' not found, appending at end.")
         content_fn(doc)
         return
-    # We build a temporary mini-doc to get the paragraph XML nodes,
-    # then splice them in after the heading.
     ref_para = doc.paragraphs[idx]
-    # Collect all XML elements to insert (in reverse so addnext order is correct)
     nodes = build_content_nodes(doc, content_fn)
     for node in reversed(nodes):
         ref_para._p.addnext(node)
@@ -121,7 +92,65 @@ def build_content_nodes(doc, content_fn):
         nodes.append(copy.deepcopy(t._tbl))
     return nodes
 
-# ── Section content functions ──────────────────────────────────────────────────
+# ── Image Embedding Helper ─────────────────────────────────────────────────────
+
+def insert_screenshots_section(doc):
+    """Embed screenshot images directly in doc so relationships are preserved."""
+    idx = find_para_index(doc, "SCREEN SHOTS")
+    if idx is None:
+        idx = find_para_index(doc, "SAMPLE INPUT")
+    if idx is None:
+        print("  WARNING: SCREEN SHOTS heading not found!")
+        return
+
+    ref = doc.paragraphs[idx]
+    shots_dir = r"f:\petshop\docs\screenshots"
+
+    captions = [
+        ("01_login.png",            "Figure 1: Customer Login Screen (Name & 10-Digit Phone Number)"),
+        ("02_admin_login.png",      "Figure 2: Admin Login Screen (Fixed Password Verification)"),
+        ("03_pet_list.png",         "Figure 3: Pet Catalog Table (ID, Breed, Age, Gender, Price, Status)"),
+        ("04_pet_details.png",      "Figure 4: Selected Pet Detailed Specifications View"),
+        ("05_cart.png",             "Figure 5: Customer Shopping Cart with Auto-Calculated Total"),
+        ("06_order_summary.png",    "Figure 6: Order Summary & Review Screen before Purchase Confirmation"),
+        ("07_order_dialog.png",     "Figure 7: Order Confirmation Dialog with Generated Unique Order ID"),
+        ("08_my_orders.png",        "Figure 8: Customer Past Orders History (My Orders View)"),
+        ("09_cancel_order.png",     "Figure 9: Order Cancellation Dialog (Restores Pet Availability)"),
+        ("10_admin_panel.png",      "Figure 10: Admin Panel — Pet Inventory Management Table"),
+        ("11_add_pet.png",          "Figure 11: Admin Panel — Add New Pet Dialog"),
+        ("12_update_pet.png",       "Figure 12: Admin Panel — Update Pet Details & Price Dialog"),
+        ("13_admin_orders.png",     "Figure 13: Admin Panel — All Customer Orders JTable"),
+        ("14_error_unavailable.png","Figure 14: Exception Handling — Pet Not Available Error Dialog"),
+        ("15_error_input.png",      "Figure 15: Exception Handling — Invalid Input Validation Dialog"),
+    ]
+
+    total_embedded = 0
+    for fname, caption in captions:
+        fpath = os.path.join(shots_dir, fname)
+        if os.path.exists(fpath):
+            cap_p = doc.add_paragraph()
+            cap_p.style = "Normal"
+            r_cap = cap_p.add_run(caption)
+            r_cap.bold = True
+            r_cap.font.size = Pt(11)
+
+            img_p = doc.add_paragraph()
+            img_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r_img = img_p.add_run()
+            r_img.add_picture(fpath, width=Inches(5.0))
+
+            sp_p = doc.add_paragraph()
+
+            # Chain: ref -> cap_p -> img_p -> sp_p
+            ref._p.addnext(sp_p._p)
+            ref._p.addnext(img_p._p)
+            ref._p.addnext(cap_p._p)
+            ref = sp_p
+            total_embedded += 1
+
+    print(f"  ✔ Successfully embedded {total_embedded} screenshots into the document.")
+
+# ── Section Content Functions ──────────────────────────────────────────────────
 
 def content_problem_statement(doc):
     add_body(doc,
@@ -134,7 +163,7 @@ def content_problem_statement(doc):
 
 def content_objectives(doc):
     items = [
-        "Provide a GUI desktop interface using Java Swing (JFrame) for pet shop management.",
+        "Provide a clean GUI desktop interface using Java Swing (JFrame) for pet shop management.",
         "Implement customer login (name + 10-digit phone) and admin login (fixed password: admin123).",
         "Display all pets in a JTable with ID, name, type, breed, age, gender, price, and status.",
         "Seed 10 sample pets (Dog, Cat, Bird, Rabbit types) on first run.",
@@ -151,19 +180,19 @@ def content_objectives(doc):
 
 def content_constraints(doc):
     items = [
-        "Single-machine desktop application — not a web or network application.",
-        "File-based storage (data/pets.txt, data/orders.txt) — no database used.",
-        "No real payment processing — purchase is simulated within the application.",
-        "No online delivery, email notifications, or external APIs.",
-        "No multi-user network access — one user session at a time.",
-        "Admin password is fixed and stored in source code (suitable for educational demonstration only).",
+        "Single-machine desktop application — runs as a desktop GUI, not a web application.",
+        "File-based storage (data/pets.txt, data/orders.txt) — no relational database used.",
+        "No real payment processing — transaction confirmation is simulated within the application.",
+        "No online delivery, email notifications, or external third-party APIs.",
+        "Single-user local desktop session — no concurrent multi-tenant network access.",
+        "Admin password is fixed and stored in source code (suitable for educational demonstration).",
     ]
     for item in items:
         add_bullet(doc, item)
 
 def content_inheritance(doc):
     add_body(doc,
-        "Inheritance is implemented through two hierarchies. The abstract class Person is extended "
+        "Inheritance is implemented through two distinct hierarchies. The abstract class Person is extended "
         "by Customer and Admin, inheriting name and phoneNumber fields. The abstract class Pet "
         "(implementing Purchasable) is extended by Dog, Cat, Bird, and Rabbit, each inheriting "
         "all pet attributes and the synchronized purchase logic.")
@@ -395,9 +424,8 @@ def content_modules_desc(doc):
 
 def content_class_diagram(doc):
     add_body(doc,
-        "The class diagram below shows all classes, their fields, methods, inheritance "
-        "relationships, interface implementations, and associations. "
-        "(Mermaid source — render with: npx -y @mermaid-js/mermaid-cli)")
+        "The class diagram below depicts all classes, their fields, methods, inheritance "
+        "relationships, interface implementations, and associations:")
     add_code_block(doc, """\
 classDiagram
     class Person { <<abstract>> -name -phoneNumber +getRole()* }
@@ -505,7 +533,6 @@ def content_prompts(doc):
     add_code_block(doc, prompt_text)
 
 def content_sample_code(doc):
-    # Code snippet 1
     p = doc.add_paragraph(style="Normal")
     p.add_run("1. OrderService.purchasePets() — synchronized order placement").bold = True
     add_code_block(doc,
@@ -533,7 +560,6 @@ def content_sample_code(doc):
         "    return order;\n"
         "}")
 
-    # Code snippet 2
     p = doc.add_paragraph(style="Normal")
     p.add_run("2. FileManager.loadPets() — CSV file reading with try/catch/finally").bold = True
     add_code_block(doc,
@@ -557,7 +583,6 @@ def content_sample_code(doc):
         "    return pets;\n"
         "}")
 
-    # Code snippet 3
     p = doc.add_paragraph(style="Normal")
     p.add_run("3. PetService.calculateTotal() — Method Overloading").bold = True
     add_code_block(doc,
@@ -572,42 +597,6 @@ def content_sample_code(doc):
         "    double subtotal = calculateTotal(petList);\n"
         "    return subtotal - (subtotal * discountPercent / 100.0);\n"
         "}")
-
-def content_screenshots(doc):
-    shots_dir = r"f:\petshop\docs\screenshots"
-    captions = [
-        ("01_login.png",           "Fig 1: Login Screen — Customer / Admin role selection"),
-        ("02_admin_login.png",     "Fig 2: Admin Login — password field"),
-        ("03_pet_list.png",        "Fig 3: Pet List — all pets in JTable"),
-        ("04_pet_details.png",     "Fig 4: Pet Details — right panel on row click"),
-        ("05_cart.png",            "Fig 5: Shopping Cart — selected pets with total"),
-        ("06_order_summary.png",   "Fig 6: Order Confirmation Summary"),
-        ("07_order_dialog.png",    "Fig 7: Order Confirmation Dialog — Order ID shown"),
-        ("08_my_orders.png",       "Fig 8: My Orders — customer's order history"),
-        ("09_cancel_order.png",    "Fig 9: Order Cancellation confirmation"),
-        ("10_admin_panel.png",     "Fig 10: Admin Panel — Manage Pets tab"),
-        ("11_add_pet.png",         "Fig 11: Add Pet dialog"),
-        ("12_update_pet.png",      "Fig 12: Update Pet dialog"),
-        ("13_admin_orders.png",    "Fig 13: Admin Orders — All Orders tab"),
-        ("14_error_unavailable.png","Fig 14: Error — Pet Not Available"),
-        ("15_error_input.png",     "Fig 15: Error — Invalid Input"),
-    ]
-    any_found = False
-    for fname, caption in captions:
-        fpath = os.path.join(shots_dir, fname)
-        if os.path.exists(fpath):
-            any_found = True
-            add_body(doc, caption, bold=True)
-            try:
-                doc.add_picture(fpath, width=Inches(5.5))
-            except Exception:
-                add_body(doc, f"[Image: {fname}]", italic=True)
-            doc.add_paragraph()
-    if not any_found:
-        add_body(doc,
-            "Screenshots will be generated after compiling the project and running "
-            "tools/CaptureScreens.java. After generating screenshots, re-run this script "
-            "to embed them in the report.", italic=True)
 
 def content_deployment(doc):
     add_body(doc,
@@ -692,41 +681,38 @@ def content_references(doc):
     for ref in refs:
         add_bullet(doc, ref)
 
-# ── Heading → content function map ─────────────────────────────────────────────
+# ── Heading → Content Function Map ─────────────────────────────────────────────
 
 HEADING_CONTENT = [
-    # (search_text,         content_function,          exact_heading_index)
-    ("PROBLEM STATEMENT",   content_problem_statement,  47),
-    ("OBJECTIVES",          content_objectives,         48),
-    ("CONSTRAINT",          content_constraints,        49),
-    ("INHERITANCE",         content_inheritance,        51),
-    ("POLYMORPHISM",        content_polymorphism,       52),
-    ("EXCEPTION HANDLING",  content_exception,          53),
-    ("THREADING",           content_threading,          54),
-    ("FILE HANDLING",       content_filehandling,       55),
-    ("COLLECTIONS",         content_collections,        56),
-    ("EVENT HANDLING",      content_eventhandling,      57),
-    ("MODULES AND DESIGN",  content_modules_design,     58),
-    ("MODULES DESCRIPTIONS",content_modules_desc,       59),
-    ("CLASS DESIGN",        content_class_diagram,      60),
-    ("PACKAGE DIAGRAM",     content_package_diagram,    61),
-    ("IMPLEMENTATION",      content_implementation,     62),
-    ("AI TOOLS USED",       content_ai_tools,           63),
-    ("PROMPTS USED",        content_prompts,            64),
-    ("SAMPLE JAVA CODE",    content_sample_code,        65),
-    ("SCREEN SHOTS",        content_screenshots,        66),
-    ("DEPLOYMENT PORTAL",   content_deployment_portal,  68),
-    ("USER MANUALS",        content_user_manual,        69),
-    ("GITHUB LINK",         content_github,             70),
-    ("REFERENCES",          content_references,         71),
+    ("PROBLEM STATEMENT",   content_problem_statement),
+    ("OBJECTIVES",          content_objectives),
+    ("CONSTRAINT",          content_constraints),
+    ("INHERITANCE",         content_inheritance),
+    ("POLYMORPHISM",        content_polymorphism),
+    ("EXCEPTION HANDLING",  content_exception),
+    ("THREADING",           content_threading),
+    ("FILE HANDLING",       content_filehandling),
+    ("COLLECTIONS",         content_collections),
+    ("EVENT HANDLING",      content_eventhandling),
+    ("MODULES AND DESIGN",  content_modules_design),
+    ("MODULES DESCRIPTIONS",content_modules_desc),
+    ("CLASS DESIGN",        content_class_diagram),
+    ("PACKAGE DIAGRAM",     content_package_diagram),
+    ("IMPLEMENTATION",      content_implementation),
+    ("AI TOOLS USED",       content_ai_tools),
+    ("PROMPTS USED",        content_prompts),
+    ("SAMPLE JAVA CODE",    content_sample_code),
+    ("DEPLOYMENT PORTAL",   content_deployment_portal),
+    ("USER MANUALS",        content_user_manual),
+    ("GITHUB LINK",         content_github),
+    ("REFERENCES",          content_references),
 ]
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
     print(f"Loading template: {TEMPLATE}")
-    shutil.copy(TEMPLATE, OUTPUT)
-    doc = Document(OUTPUT)
+    doc = Document(TEMPLATE)
 
     # 1. Replace TITLE on cover page and bonafide certificate
     for para in doc.paragraphs:
@@ -737,22 +723,34 @@ def main():
                 run.text = run.text.replace("TITLE", "PET SHOP MANAGEMENT SYSTEM")
     print("  ✔ Replaced TITLE on cover page and bonafide certificate.")
 
-    # 2. Insert content after each heading paragraph
-    # We work in reverse paragraph order so indices stay stable after insertions
-    # Actually, we use insert_content_after_heading which searches by text each time.
-    # To be safe process from last heading to first (reverse order).
-    for search_text, content_fn, _ in reversed(HEADING_CONTENT):
-        print(f"  Filling: {search_text}")
+    # 2. Insert text content after each heading (in reverse order for stability)
+    for search_text, content_fn in reversed(HEADING_CONTENT):
+        print(f"  Filling text: {search_text}")
         insert_content_after_heading(doc, search_text, content_fn)
 
-    # 3. Also handle DEPLOYMENT (index 67) separately
-    print("  Filling: DEPLOYMENT")
+    # 3. Handle DEPLOYMENT section
+    print("  Filling text: DEPLOYMENT")
     insert_content_after_heading(doc, "DEPLOYMENT PORTAL", content_deployment)
 
+    # 4. Handle SCREEN SHOTS section with direct image embedding
+    print("  Embedding screenshots...")
+    insert_screenshots_section(doc)
+
     os.makedirs(r"f:\petshop\report", exist_ok=True)
-    doc.save(OUTPUT)
-    print(f"\n✅ Report saved: {OUTPUT}")
-    print("   Open in Word → right-click Table of Contents → 'Update Field'")
+
+    # Try saving to OUTPUT; if locked, save to OUTPUT_FALLBACK
+    saved_path = OUTPUT
+    try:
+        doc.save(OUTPUT)
+        print(f"\n✅ Report successfully saved with all photos embedded: {OUTPUT}")
+    except PermissionError:
+        print(f"\n⚠️ Notice: {OUTPUT} is currently open in Word.")
+        print(f"Saving to {OUTPUT_FALLBACK} instead...")
+        doc.save(OUTPUT_FALLBACK)
+        saved_path = OUTPUT_FALLBACK
+        print(f"✅ Report saved with all photos embedded: {OUTPUT_FALLBACK}")
+
+    print("\nNext step: Open the document in Word, right-click the Table of Contents, and select 'Update Field'.")
 
 if __name__ == "__main__":
     main()
